@@ -132,7 +132,11 @@ HEREDOC
   # Check for Spec-Kit (optional planning tool)
   if command -v specify &>/dev/null; then
     echo "  Spec-Kit found. Running 'specify init . --ai claude'..."
-    specify init . --ai claude --force
+    if specify init . --ai claude --force </dev/null >/dev/null 2>&1; then
+      echo "  Spec-Kit initialized successfully"
+    else
+      echo "  Warning: Spec-Kit init failed (optional - continuing anyway)"
+    fi
   else
     echo ""
     echo "  Spec-Kit not found (optional - for task planning)"
@@ -317,16 +321,13 @@ cmd_plan() {
 
   # Run conversion while on current branch (where plan.js exists)
   echo "Converting $tasks_file to task JSON files..."
-  node "$LIB_DIR/plan.js" "$tasks_file" "$temp_dir/"
-
-  if [[ $? -ne 0 ]]; then
+  if ! node "$LIB_DIR/plan.js" "$tasks_file" "$temp_dir/"; then
     echo "Error: Failed to convert tasks" >&2
     exit 1
   fi
 
   # Switch to coordination branch
-  git checkout coordination >/dev/null 2>&1
-  if [[ $? -ne 0 ]]; then
+  if ! git checkout coordination >/dev/null 2>&1; then
     echo "Error: Could not checkout coordination branch" >&2
     git checkout "$current_branch" >/dev/null 2>&1
     exit 1
