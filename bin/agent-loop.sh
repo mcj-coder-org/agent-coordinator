@@ -7,6 +7,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../lib"
 
+# Verify node is available (wt.exe tabs may lack nvm in PATH)
+if ! command -v node &>/dev/null; then
+  echo "ERROR: node not found in PATH. Ensure node is available in login shell." >&2
+  echo "  If using nvm, verify ~/.profile or ~/.bash_profile sources nvm." >&2
+  exit 1
+fi
+
 AGENT_NAME="${1:?Usage: agent-loop.sh <name> <command> <coord-worktree> <agent-worktree> <caps...>}"
 AGENT_CMD="${2:?}"
 COORD_WORKTREE="${3:?}"

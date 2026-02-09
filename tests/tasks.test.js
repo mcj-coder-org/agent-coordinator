@@ -89,6 +89,13 @@ describe('findClaimable', () => {
     assert.equal(result[0].id, '004');
   });
 
+  it('treats complete status as done for blocker resolution', () => {
+    const completeTasks = tasks.map((t) => (t.id === '001' ? { ...t, status: 'complete' } : t));
+    const result = findClaimable(completeTasks, ['fixes'], taskTypes, completeTasks);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, '004');
+  });
+
   it('returns empty when no tasks match', () => {
     const result = findClaimable(tasks, ['planning'], taskTypes, tasks);
     assert.equal(result.length, 0);
