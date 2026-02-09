@@ -52,8 +52,66 @@ cmd_status() {
 }
 
 cmd_init() {
-  echo "coordinator init — not yet implemented"
-  exit 1
+  local coord_dir=".coordination"
+  local templates_dir="$SCRIPT_DIR/../templates/coordination"
+
+  if [[ -d "$coord_dir" ]]; then
+    echo "Error: .coordination/ already exists." >&2
+    exit 1
+  fi
+
+  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    echo "Error: not inside a git repository." >&2
+    exit 1
+  fi
+
+  echo "Initializing .coordination/..."
+
+  # Copy templates
+  cp -r "$templates_dir" "$coord_dir"
+  echo "  Created .coordination/ with config and CLAUDE.md templates"
+
+  # Create coordination orphan branch
+  local current_branch
+  current_branch=$(git branch --show-current)
+  git checkout --orphan coordination
+  git rm -rf . >/dev/null 2>&1 || true
+  mkdir -p tasks
+  cat >README.md <<'HEREDOC'
+# Coordination Branch
+
+This branch holds task JSON files for agent coordination.
+It is never merged to main.
+HEREDOC
+  git add tasks README.md
+  git commit -m "init: coordination branch" --no-verify
+  git checkout "$current_branch"
+  echo "  Created 'coordination' orphan branch with tasks/ directory"
+
+  # Check for Spec-Kit
+  if command -v specify &>/dev/null; then
+    echo "  Spec-Kit found. Running 'specify init . --ai claude'..."
+    specify init . --ai claude
+  else
+    echo ""
+    echo "  Spec-Kit not found."
+    read -rp "  Install Spec-Kit for planning phase? (y/N) " install_speckit
+    if [[ "$install_speckit" =~ ^[Yy]$ ]]; then
+      npm install -g @github/spec-kit
+      if command -v specify &>/dev/null; then
+        specify init . --ai claude
+      fi
+    else
+      echo "  Skipping Spec-Kit. You can install later with: npm install -g @github/spec-kit"
+    fi
+  fi
+
+  echo ""
+  echo "Done! Next steps:"
+  echo "  1. Edit .coordination/config.toml to customize task types"
+  echo "  2. Edit .coordination/claude-md/*.md to customize agent prompts"
+  echo "  3. Run 'coordinator plan' to generate tasks"
+  echo "  4. Run 'coordinator start' to begin agent loops"
 }
 
 cmd_start() {
