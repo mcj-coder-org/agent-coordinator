@@ -76,6 +76,10 @@ log "  Agent worktree: $AGENT_WORKTREE"
 
 # Reclaim any tasks that were left in claimed state by this agent
 log "Reclaiming orphaned tasks..."
+
+# Add small random delay to avoid lock conflicts when multiple agents start simultaneously
+sleep $((RANDOM % 3))
+
 cd "$COORD_WORKTREE"
 git pull --rebase origin coordination 2>/dev/null || true
 node "$LIB_DIR/tasks.js" reclaim "$COORD_WORKTREE/tasks" "$AGENT_NAME" || true
@@ -84,7 +88,15 @@ if git diff --quiet tasks/; then
 else
   git add tasks/
   git commit -m "reclaim: $AGENT_NAME orphaned tasks" --no-verify
-  git push origin coordination 2>/dev/null || true
+  # Retry push with backoff on lock errors
+  for i in {1..3}; do
+    if git push origin coordination 2>/dev/null; then
+      break
+    fi
+    log "Push failed (attempt $i/3), retrying after delay..."
+    sleep $((i * 2))
+    git pull --rebase origin coordination 2>/dev/null || true
+  done
 fi
 
 # Clean agent worktree for fresh start
@@ -159,6 +171,12 @@ while true; do
   fi
 
   # 7. Commit + push code from agent worktree
+  if [[ ! -d "$AGENT_WORKTREE" ]]; then
+    log "ERROR: Agent worktree disappeared at $AGENT_WORKTREE"
+    log "This usually means 'coordinator stop' was run while agent was working"
+    exit 1
+  fi
+
   cd "$AGENT_WORKTREE"
   if git diff --quiet && git diff --cached --quiet; then
     log "No changes produced for task $TASK_ID"
