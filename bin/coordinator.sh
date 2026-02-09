@@ -310,30 +310,42 @@ cmd_plan() {
   local current_branch
   current_branch=$(git branch --show-current)
 
+  # Create temp directory for conversion output
+  local temp_dir
+  temp_dir=$(mktemp -d)
+  # Note: trap cleanup handled at function exit
+
+  # Run conversion while on current branch (where plan.js exists)
+  echo "Converting $tasks_file to task JSON files..."
+  node "$LIB_DIR/plan.js" "$tasks_file" "$temp_dir/"
+
+  if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to convert tasks" >&2
+    exit 1
+  fi
+
   # Switch to coordination branch
   git checkout coordination >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Error: Could not checkout coordination branch" >&2
-    exit 1
-  fi
-
-  # Run conversion
-  echo "Converting $tasks_file to task JSON files..."
-  node "$LIB_DIR/plan.js" "$tasks_file" tasks/
-
-  if [[ $? -eq 0 ]]; then
-    # Commit the tasks
-    git add tasks/*.json
-    git commit -m "plan: import tasks from $(basename "$tasks_file")" --no-verify
-    echo "Tasks committed to coordination branch"
-  else
-    echo "Error: Failed to convert tasks" >&2
     git checkout "$current_branch" >/dev/null 2>&1
     exit 1
   fi
 
+  # Copy converted tasks to coordination branch
+  cp "$temp_dir"/*.json tasks/ 2>/dev/null || true
+
+  # Commit the tasks
+  git add tasks/*.json
+  git commit -m "plan: import tasks from $(basename "$tasks_file")" --no-verify
+  echo "Tasks committed to coordination branch"
+
   # Return to original branch
   git checkout "$current_branch" >/dev/null 2>&1
+
+  # Clean up temp directory
+  rm -rf "$temp_dir"
+
   echo "Done. Tasks ready on coordination branch."
 }
 
