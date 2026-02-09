@@ -372,11 +372,27 @@ cmd_reset_failed() {
     exit 1
   fi
 
-  echo "Resetting all failed tasks to pending..."
+  # Check if any agents are running (any claimed tasks exist)
   cd "$coord_wt"
-
-  # Pull latest changes
   git pull --rebase origin coordination 2>/dev/null || true
+
+  local claimed_count=0
+  for task_file in "$tasks_dir"/*.json; do
+    [[ -f "$task_file" ]] || continue
+    local status
+    status=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$task_file','utf8')).status)")
+    if [[ "$status" == "claimed" ]]; then
+      claimed_count=$((claimed_count + 1))
+    fi
+  done
+
+  if [[ $claimed_count -gt 0 ]]; then
+    echo "Error: Agents are currently running ($claimed_count claimed tasks)." >&2
+    echo "  Run 'coordinator stop' first to avoid task confusion." >&2
+    exit 1
+  fi
+
+  echo "Resetting all failed tasks to pending..."
 
   # Reset failed tasks
   node "$LIB_DIR/tasks.js" reset-failed "$tasks_dir"
@@ -390,6 +406,8 @@ cmd_reset_failed() {
     git commit -m "reset: all failed tasks to pending" --no-verify
     git push origin coordination 2>/dev/null || true
     echo "Done. Failed tasks have been reset to pending."
+    echo ""
+    echo "Run 'coordinator start' to begin processing tasks."
   fi
 }
 
