@@ -95,6 +95,27 @@ coordinator status
 
 Shows which tasks are pending, claimed, or complete.
 
+### 6. Handle Failed Tasks
+
+Failed tasks are automatically retried up to `max-retries` times (default: 3).
+Configure in `.coordination/config.toml`:
+
+```toml
+[settings]
+max-retries = 3
+```
+
+To manually reset all failed tasks to pending:
+
+```bash
+cd .coordination
+git checkout coordination
+node ../lib/tasks.js reset-failed tasks/
+git add tasks/ && git commit -m "reset failed tasks" --no-verify
+git push origin coordination
+git checkout main
+```
+
 ## Development
 
 ```bash
