@@ -207,4 +207,32 @@ describe('buildDependencyGraph', () => {
     assert.deepEqual(result[1].blockedBy, ['001']);
     assert.deepEqual(result[2].blockedBy, ['001', '002']);
   });
+
+  it('handles missing owns/touches fields gracefully', () => {
+    const tasks = [
+      {
+        id: '001',
+        owns: ['src/model.py'],
+        // missing touches field
+        blockedBy: [],
+      },
+      {
+        id: '002',
+        // missing owns field
+        touches: ['src/model.py'],
+        blockedBy: [],
+      },
+      {
+        id: '003',
+        // missing both fields
+        blockedBy: [],
+      },
+    ];
+
+    const result = buildDependencyGraph(tasks);
+
+    assert.deepEqual(result[0].blockedBy, []);
+    assert.deepEqual(result[1].blockedBy, ['001']);
+    assert.deepEqual(result[2].blockedBy, []);
+  });
 });
