@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks to find actual script location (handles npm link)
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if [[ -L "$SCRIPT_PATH" ]]; then
+  SCRIPT_PATH="$(readlink -f "$SCRIPT_PATH")"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../lib"
 
 usage() {
@@ -9,15 +14,16 @@ usage() {
 Usage: coordinator <command> [options]
 
 Commands:
-  init          Initialize .coordination/ in current project
-  start         Create worktrees and start agent loops
-  stop          Stop agent loops and optionally clean worktrees
-  add-agent     Spin up an additional agent
-  status        Show current task and agent status
-  plan          Run planner agent with Spec-Kit
+  init [--force]  Initialize .coordination/ in current project
+                  --force: reinitialize (deletes existing setup)
+  start           Create worktrees and start agent loops
+  stop            Stop agent loops and optionally clean worktrees
+  add-agent       Spin up an additional agent
+  status          Show current task and agent status
+  plan            Run planner agent with Spec-Kit
 
 Options:
-  -h, --help    Show this help message
+  -h, --help      Show this help message
 EOF
 }
 
@@ -57,20 +63,48 @@ cmd_status() {
 }
 
 cmd_init() {
+  local force=false
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --force)
+      force=true
+      shift
+      ;;
+    *)
+      echo "Error: unknown option '$1'" >&2
+      echo "Usage: coordinator init [--force]" >&2
+      exit 1
+      ;;
+    esac
+  done
+
   local coord_dir=".coordination"
   local templates_dir="$SCRIPT_DIR/../templates/coordination"
-
-  if [[ -d "$coord_dir" ]]; then
-    echo "Error: .coordination/ already exists." >&2
-    exit 1
-  fi
 
   if ! git rev-parse --is-inside-work-tree &>/dev/null; then
     echo "Error: not inside a git repository." >&2
     exit 1
   fi
 
-  echo "Initializing .coordination/..."
+  # Check if already initialized
+  if [[ -d "$coord_dir" ]]; then
+    if [[ "$force" == false ]]; then
+      echo "Error: .coordination/ already exists (already initialized)." >&2
+      echo "  Use 'coordinator init --force' to reinitialize." >&2
+      exit 1
+    fi
+    echo "Reinitializing .coordination/ (--force)..."
+    rm -rf "$coord_dir"
+
+    # Delete coordination branch if it exists
+    if git show-ref --verify --quiet refs/heads/coordination; then
+      git branch -D coordination >/dev/null 2>&1
+    fi
+  else
+    echo "Initializing .coordination/..."
+  fi
 
   # Copy templates
   cp -r "$templates_dir" "$coord_dir"
@@ -94,24 +128,17 @@ HEREDOC
   git checkout "$current_branch"
   echo "  Created 'coordination' orphan branch with tasks/ directory"
 
-  # Check for Spec-Kit
+  # Check for Spec-Kit (optional planning tool)
   if command -v specify &>/dev/null; then
     echo "  Spec-Kit found. Running 'specify init . --ai claude'..."
-    specify init . --ai claude
-  elif [[ -t 0 ]]; then
-    echo ""
-    echo "  Spec-Kit not found."
-    read -rp "  Install Spec-Kit for planning phase? (y/N) " install_speckit
-    if [[ "$install_speckit" =~ ^[Yy]$ ]]; then
-      npm install -g @github/spec-kit
-      if command -v specify &>/dev/null; then
-        specify init . --ai claude
-      fi
-    else
-      echo "  Skipping Spec-Kit. You can install later with: npm install -g @github/spec-kit"
-    fi
+    specify init . --ai claude --force
   else
-    echo "  Spec-Kit not found. Install with: npm install -g @github/spec-kit"
+    echo ""
+    echo "  Spec-Kit not found (optional - for task planning)"
+    echo "  To install Spec-Kit:"
+    echo "    1. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    echo "    2. Install Spec-Kit: uv tool install specify-cli --from git+https://github.com/github/spec-kit.git"
+    echo "  See: https://github.com/github/spec-kit"
   fi
 
   echo ""
@@ -253,8 +280,60 @@ cmd_add_agent() {
 }
 
 cmd_plan() {
-  echo "coordinator plan — not yet implemented"
-  exit 1
+  local coord_dir=".coordination"
+  if [[ ! -d "$coord_dir" ]]; then
+    echo "Error: .coordination/ not found. Run 'coordinator init' first." >&2
+    exit 1
+  fi
+
+  local tasks_file="$1"
+  if [[ -z "$tasks_file" ]]; then
+    # Auto-discover tasks.md in specs/ directory
+    local specs_dirs=(specs/*/tasks.md)
+    if [[ -e "${specs_dirs[0]}" ]]; then
+      tasks_file="${specs_dirs[0]}"
+      echo "Found tasks.md: $tasks_file"
+    else
+      echo "Error: No tasks.md file specified and none found in specs/*/" >&2
+      echo "Usage: coordinator plan [path/to/tasks.md]" >&2
+      exit 1
+    fi
+  fi
+
+  if [[ ! -f "$tasks_file" ]]; then
+    echo "Error: $tasks_file not found" >&2
+    exit 1
+  fi
+
+  # Get current branch to return to
+  local current_branch
+  current_branch=$(git branch --show-current)
+
+  # Switch to coordination branch
+  git checkout coordination >/dev/null 2>&1
+  if [[ $? -ne 0 ]]; then
+    echo "Error: Could not checkout coordination branch" >&2
+    exit 1
+  fi
+
+  # Run conversion
+  echo "Converting $tasks_file to task JSON files..."
+  node "$LIB_DIR/plan.js" "$tasks_file" tasks/
+
+  if [[ $? -eq 0 ]]; then
+    # Commit the tasks
+    git add tasks/*.json
+    git commit -m "plan: import tasks from $(basename "$tasks_file")" --no-verify
+    echo "Tasks committed to coordination branch"
+  else
+    echo "Error: Failed to convert tasks" >&2
+    git checkout "$current_branch" >/dev/null 2>&1
+    exit 1
+  fi
+
+  # Return to original branch
+  git checkout "$current_branch" >/dev/null 2>&1
+  echo "Done. Tasks ready on coordination branch."
 }
 
 main() {

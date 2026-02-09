@@ -232,6 +232,66 @@ test_init_already_exists() {
   local output
   output=$("$COORDINATOR" init 2>&1) || true
   assert_contains "error about existing" "already exists" "$output"
+  assert_contains "mentions already initialized" "already initialized" "$output"
+  assert_contains "mentions force flag" "--force" "$output"
+}
+
+test_init_force_reinitializes() {
+  echo "── init --force reinitializes .coordination/ ──"
+  local repo
+  repo=$(make_repo "init-force-test")
+  cd "$repo"
+
+  # First init
+  "$COORDINATOR" init </dev/null >/dev/null 2>&1
+
+  # Modify config to verify it gets replaced
+  echo "# modified" >>"$repo/.coordination/config.toml"
+  local modified_content
+  modified_content=$(cat "$repo/.coordination/config.toml")
+
+  # Force reinit
+  "$COORDINATOR" init --force </dev/null >/dev/null 2>&1
+
+  # Verify .coordination exists
+  assert_dir_exists ".coordination/ still exists" "$repo/.coordination"
+  assert_file_exists "config.toml exists" "$repo/.coordination/config.toml"
+
+  # Verify config was reset (no "# modified" comment)
+  local new_content
+  new_content=$(cat "$repo/.coordination/config.toml")
+  assert_not_contains "config was reset" "# modified" "$new_content"
+}
+
+test_init_force_resets_coordination_branch() {
+  echo "── init --force resets coordination branch ──"
+  local repo
+  repo=$(make_repo "init-force-branch-test")
+  cd "$repo"
+
+  # First init
+  "$COORDINATOR" init </dev/null >/dev/null 2>&1
+
+  # Add a file to coordination branch
+  git checkout coordination >/dev/null 2>&1
+  echo "test file" >tasks/test.txt
+  git add tasks/test.txt
+  git commit -m "add test file" --no-verify >/dev/null 2>&1
+  git checkout main >/dev/null 2>&1
+
+  # Force reinit
+  "$COORDINATOR" init --force </dev/null >/dev/null 2>&1
+
+  # Verify coordination branch exists
+  local branches
+  branches=$(git branch --list coordination)
+  assert_contains "coordination branch exists" "coordination" "$branches"
+
+  # Verify test.txt is gone (branch was reset)
+  local files
+  files=$(git ls-tree --name-only -r coordination)
+  assert_not_contains "test file removed from branch" "test.txt" "$files"
+  assert_contains "tasks/.gitkeep still exists" "tasks/.gitkeep" "$files"
 }
 
 test_status_no_coordination() {
@@ -375,6 +435,44 @@ test_stop_clean_removes_branches() {
   assert_eq "agent branches cleaned up" "" "$branches"
 }
 
+test_plan_converts_speckit_tasks() {
+  echo "── plan converts tasks.md to JSON ──"
+  local repo
+  repo=$(make_repo "plan-test")
+  cd "$repo"
+  "$COORDINATOR" init </dev/null >/dev/null 2>&1
+
+  # Create a sample tasks.md
+  mkdir -p specs/001-test-feature
+  cat >specs/001-test-feature/tasks.md <<'TASKS'
+# Tasks: Test Feature
+
+- [ ] T001 Create project structure
+- [ ] T002 [P] Add model in src/model.py
+- [ ] T003 [US1] Implement feature in src/feature.py
+TASKS
+
+  # Run plan command
+  "$COORDINATOR" plan specs/001-test-feature/tasks.md >/dev/null 2>&1
+
+  # Check coordination branch has tasks
+  local project_name
+  project_name=$(basename "$repo")
+  local coord_wt="$TEST_DIR/${project_name}-coordination"
+
+  # Create coordination worktree to check files
+  git worktree add "$coord_wt" coordination >/dev/null 2>&1
+
+  assert_file_exists "001.json created" "$coord_wt/tasks/001.json"
+  assert_file_exists "002.json created" "$coord_wt/tasks/002.json"
+  assert_file_exists "003.json created" "$coord_wt/tasks/003.json"
+
+  # Verify JSON format
+  local task001_status
+  task001_status=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$coord_wt/tasks/001.json','utf8')).status)")
+  assert_eq "task has pending status" "pending" "$task001_status"
+}
+
 # ── Runner ─────────────────────────────────────────────
 
 main() {
@@ -390,6 +488,8 @@ main() {
   test_init_creates_coordination
   test_init_creates_coordination_branch
   test_init_already_exists
+  test_init_force_reinitializes
+  test_init_force_resets_coordination_branch
   test_status_no_coordination
   test_status_no_worktree
   test_start_no_coordination
@@ -399,6 +499,7 @@ main() {
   test_status_with_tasks
   test_stop_removes_worktrees
   test_stop_clean_removes_branches
+  test_plan_converts_speckit_tasks
 
   echo ""
   echo "=== Results: $PASS passed, $FAIL failed ==="
