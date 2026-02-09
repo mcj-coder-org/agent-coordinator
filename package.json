@@ -5,10 +5,12 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/**/*.test.js",
+    "test:e2e": "bash tests/e2e.sh",
+    "test:smoke": "bash tests/smoke.sh",
     "lint:sh": "shellcheck bin/*.sh",
     "lint:fmt": "prettier --check .",
     "lint:md": "markdownlint-cli2 '**/*.md'",
-    "check": "npm test && npm run lint:sh && npm run lint:fmt && npm run lint:md",
+    "check": "npm test && npm run test:e2e && npm run lint:sh && npm run lint:fmt && npm run lint:md",
     "prepare": "husky"
   },
   "lint-staged": {
