@@ -1,0 +1,26 @@
+{
+  "name": "agent-coordinator",
+  "version": "0.1.0",
+  "description": "Git-based parallel AI agent coordinator",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/**/*.test.js",
+    "lint:sh": "shellcheck bin/*.sh",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,json}": "prettier --write",
+    "*.md": [
+      "prettier --write",
+      "markdownlint-cli2 --fix"
+    ],
+    "*.sh": "shfmt -w"
+  },
+  "devDependencies": {
+    "husky": "^9",
+    "lint-staged": "^15",
+    "markdownlint-cli2": "^0.17",
+    "prettier": "^3",
+    "shellcheck": "^4"
+  }
+}
