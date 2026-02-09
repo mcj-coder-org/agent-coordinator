@@ -179,15 +179,18 @@ describe('CLI interface', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
-    // Write a config with task types (JSON format for now)
+    // Write a config with task types (TOML format)
     fs.writeFileSync(
-      path.join(tmpDir, 'config.json'),
-      JSON.stringify({
-        'task-types': {
-          implement: { priority: 50 },
-          review: { priority: 90 },
-        },
-      }),
+      path.join(tmpDir, 'config.toml'),
+      [
+        '[task-types.implement]',
+        'priority = 50',
+        'claude-md = "implementer.md"',
+        '',
+        '[task-types.review]',
+        'priority = 90',
+        'claude-md = "reviewer.md"',
+      ].join('\n'),
     );
     fs.mkdirSync(path.join(tmpDir, 'tasks'));
   });
@@ -215,7 +218,7 @@ describe('CLI interface', () => {
         path.join(__dirname, '..', 'lib', 'tasks.js'),
         'claim',
         path.join(tmpDir, 'tasks'),
-        path.join(tmpDir, 'config.json'),
+        path.join(tmpDir, 'config.toml'),
         'agent-1',
         'implement',
       ],
@@ -234,7 +237,7 @@ describe('CLI interface', () => {
         path.join(__dirname, '..', 'lib', 'tasks.js'),
         'claim',
         path.join(tmpDir, 'tasks'),
-        path.join(tmpDir, 'config.json'),
+        path.join(tmpDir, 'config.toml'),
         'agent-1',
         'planning',
       ],
