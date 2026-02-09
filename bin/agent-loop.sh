@@ -7,7 +7,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../lib"
 
-# Ensure node is available (wt.exe tabs start without .bashrc)
+# Enable alias expansion for non-interactive shell
+shopt -s expand_aliases
+
+# Source user profile to get aliases and PATH (wt.exe tabs start without .bashrc)
+# shellcheck disable=SC1090,SC1091
+[[ -f "$HOME/.bash_profile" ]] && . "$HOME/.bash_profile"
+# shellcheck disable=SC1090,SC1091
+[[ -f "$HOME/.bashrc" ]] && . "$HOME/.bashrc"
+# shellcheck disable=SC1090,SC1091
+[[ -f "$HOME/.profile" ]] && . "$HOME/.profile"
+
+# Ensure node is available
 if ! command -v node &>/dev/null; then
   # Try common node version managers
   export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
