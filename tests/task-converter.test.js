@@ -18,6 +18,7 @@ describe('convertToCoordinatorTask', () => {
     assert.equal(result.type, 'implementation');
     assert.equal(result.status, 'pending');
     assert.equal(result.description, 'Create project structure per implementation plan');
+    assert.deepEqual(result.acceptanceCriteria, []);
     assert.deepEqual(result.blockedBy, []);
     assert.equal(result.claimedBy, null);
     assert.deepEqual(result.history, []);
