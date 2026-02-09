@@ -108,12 +108,7 @@ max-retries = 3
 To manually reset all failed tasks to pending:
 
 ```bash
-cd .coordination
-git checkout coordination
-node ../lib/tasks.js reset-failed tasks/
-git add tasks/ && git commit -m "reset failed tasks" --no-verify
-git push origin coordination
-git checkout main
+coordinator reset-failed
 ```
 
 ## Development

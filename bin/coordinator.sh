@@ -22,6 +22,7 @@ Commands:
   stop              Stop agent loops and optionally clean worktrees
   add-agent         Spin up an additional agent
   status            Show current task and agent status
+  reset-failed      Reset all failed tasks to pending status
 
 Options:
   -h, --help        Show this help message
@@ -350,6 +351,48 @@ cmd_plan() {
   echo "Done. Tasks ready on coordination branch."
 }
 
+cmd_reset_failed() {
+  local coord_dir=".coordination"
+  if [[ ! -d "$coord_dir" ]]; then
+    echo "Error: .coordination/ not found. Run 'coordinator init' first." >&2
+    exit 1
+  fi
+
+  # Find coordination worktree
+  local coord_wt
+  coord_wt=$(git worktree list | grep "coordination" | awk '{print $1}') || true
+  if [[ -z "$coord_wt" ]]; then
+    echo "Error: Coordination worktree not found. Run 'coordinator start' first." >&2
+    exit 1
+  fi
+
+  local tasks_dir="$coord_wt/tasks"
+  if [[ ! -d "$tasks_dir" ]]; then
+    echo "Error: Tasks directory not found at $tasks_dir" >&2
+    exit 1
+  fi
+
+  echo "Resetting all failed tasks to pending..."
+  cd "$coord_wt"
+
+  # Pull latest changes
+  git pull --rebase origin coordination 2>/dev/null || true
+
+  # Reset failed tasks
+  node "$LIB_DIR/tasks.js" reset-failed "$tasks_dir"
+
+  # Check if there are any changes
+  if git diff --quiet tasks/; then
+    echo "No failed tasks found."
+  else
+    # Commit and push
+    git add tasks/
+    git commit -m "reset: all failed tasks to pending" --no-verify
+    git push origin coordination 2>/dev/null || true
+    echo "Done. Failed tasks have been reset to pending."
+  fi
+}
+
 main() {
   if [[ $# -eq 0 ]]; then
     usage
@@ -380,6 +423,10 @@ main() {
   plan)
     shift
     cmd_plan "$@"
+    ;;
+  reset-failed)
+    shift
+    cmd_reset_failed "$@"
     ;;
   -h | --help) usage ;;
   *)
