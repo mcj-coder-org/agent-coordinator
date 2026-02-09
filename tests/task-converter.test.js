@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { convertToCoordinatorTask } = require('../lib/task-converter.js');
+const { convertToCoordinatorTask, buildDependencyGraph } = require('../lib/task-converter.js');
 
 describe('convertToCoordinatorTask', () => {
   it('converts basic spec-kit task to coordinator format', () => {
@@ -80,5 +80,131 @@ describe('convertToCoordinatorTask', () => {
     const result = convertToCoordinatorTask(specKitTask, 42);
 
     assert.equal(result.id, '042');
+  });
+});
+
+describe('buildDependencyGraph', () => {
+  it('returns empty blockedBy for task with no file conflicts', () => {
+    const tasks = [
+      {
+        id: '001',
+        owns: ['src/model.py'],
+        touches: [],
+        blockedBy: [],
+      },
+      {
+        id: '002',
+        owns: ['src/view.py'],
+        touches: [],
+        blockedBy: [],
+      },
+    ];
+
+    const result = buildDependencyGraph(tasks);
+
+    assert.deepEqual(result[0].blockedBy, []);
+    assert.deepEqual(result[1].blockedBy, []);
+  });
+
+  it('blocks task that touches file owned by earlier task', () => {
+    const tasks = [
+      {
+        id: '001',
+        owns: ['src/model.py'],
+        touches: [],
+        blockedBy: [],
+      },
+      {
+        id: '002',
+        owns: [],
+        touches: ['src/model.py'],
+        blockedBy: [],
+      },
+    ];
+
+    const result = buildDependencyGraph(tasks);
+
+    assert.deepEqual(result[0].blockedBy, []);
+    assert.deepEqual(result[1].blockedBy, ['001']);
+  });
+
+  it('blocks task that owns file touched by earlier task', () => {
+    const tasks = [
+      {
+        id: '001',
+        owns: [],
+        touches: ['src/model.py'],
+        blockedBy: [],
+      },
+      {
+        id: '002',
+        owns: ['src/model.py'],
+        touches: [],
+        blockedBy: [],
+      },
+    ];
+
+    const result = buildDependencyGraph(tasks);
+
+    assert.deepEqual(result[0].blockedBy, []);
+    assert.deepEqual(result[1].blockedBy, ['001']);
+  });
+
+  it('blocks task with multiple dependencies', () => {
+    const tasks = [
+      {
+        id: '001',
+        owns: ['src/model.py'],
+        touches: [],
+        blockedBy: [],
+      },
+      {
+        id: '002',
+        owns: ['src/view.py'],
+        touches: [],
+        blockedBy: [],
+      },
+      {
+        id: '003',
+        owns: [],
+        touches: ['src/model.py', 'src/view.py'],
+        blockedBy: [],
+      },
+    ];
+
+    const result = buildDependencyGraph(tasks);
+
+    assert.deepEqual(result[0].blockedBy, []);
+    assert.deepEqual(result[1].blockedBy, []);
+    assert.deepEqual(result[2].blockedBy, ['001', '002']);
+  });
+
+  it('handles complex dependency chains', () => {
+    const tasks = [
+      {
+        id: '001',
+        owns: ['src/model.py'],
+        touches: [],
+        blockedBy: [],
+      },
+      {
+        id: '002',
+        owns: [],
+        touches: ['src/model.py'],
+        blockedBy: [],
+      },
+      {
+        id: '003',
+        owns: [],
+        touches: ['src/model.py'],
+        blockedBy: [],
+      },
+    ];
+
+    const result = buildDependencyGraph(tasks);
+
+    assert.deepEqual(result[0].blockedBy, []);
+    assert.deepEqual(result[1].blockedBy, ['001']);
+    assert.deepEqual(result[2].blockedBy, ['001', '002']);
   });
 });
