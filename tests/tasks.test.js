@@ -171,3 +171,98 @@ describe('updateTask', () => {
     assert.equal(result.history[1].status, 'complete');
   });
 });
+
+const { execFileSync } = require('node:child_process');
+
+describe('CLI interface', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
+    // Write a config with task types (JSON format for now)
+    fs.writeFileSync(
+      path.join(tmpDir, 'config.json'),
+      JSON.stringify({
+        'task-types': {
+          implement: { priority: 50 },
+          review: { priority: 90 },
+        },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, 'tasks'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('claim returns task JSON when a task is available', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'tasks', '001.json'),
+      JSON.stringify({
+        id: '001',
+        type: 'implement',
+        status: 'pending',
+        blockedBy: [],
+        claimedBy: null,
+        history: [],
+      }),
+    );
+
+    const result = execFileSync(
+      'node',
+      [
+        path.join(__dirname, '..', 'lib', 'tasks.js'),
+        'claim',
+        path.join(tmpDir, 'tasks'),
+        path.join(tmpDir, 'config.json'),
+        'agent-1',
+        'implement',
+      ],
+      { encoding: 'utf8' },
+    );
+
+    const parsed = JSON.parse(result.trim());
+    assert.equal(parsed.taskId, '001');
+    assert.equal(parsed.taskType, 'implement');
+  });
+
+  it('claim exits with empty output when no tasks match', () => {
+    const result = execFileSync(
+      'node',
+      [
+        path.join(__dirname, '..', 'lib', 'tasks.js'),
+        'claim',
+        path.join(tmpDir, 'tasks'),
+        path.join(tmpDir, 'config.json'),
+        'agent-1',
+        'planning',
+      ],
+      { encoding: 'utf8' },
+    );
+
+    assert.equal(result.trim(), '');
+  });
+
+  it('update changes task status on disk', () => {
+    const taskFile = path.join(tmpDir, 'tasks', '001.json');
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        history: [],
+      }),
+    );
+
+    execFileSync(
+      'node',
+      [path.join(__dirname, '..', 'lib', 'tasks.js'), 'update', taskFile, 'complete', 'agent-1'],
+      { encoding: 'utf8' },
+    );
+
+    const onDisk = JSON.parse(fs.readFileSync(taskFile, 'utf8'));
+    assert.equal(onDisk.status, 'complete');
+  });
+});
