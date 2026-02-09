@@ -46,3 +46,51 @@ describe('listTasks', () => {
     assert.equal(tasks.length, 1);
   });
 });
+
+const { findClaimable } = require('../lib/tasks.js');
+
+describe('findClaimable', () => {
+  const tasks = [
+    { id: '001', type: 'implement', status: 'pending', blockedBy: [] },
+    { id: '002', type: 'review', status: 'pending', blockedBy: [] },
+    { id: '003', type: 'implement', status: 'claimed', blockedBy: [] },
+    { id: '004', type: 'fixes', status: 'pending', blockedBy: ['001'] },
+  ];
+
+  const taskTypes = {
+    implement: { priority: 50 },
+    review: { priority: 90 },
+    fixes: { priority: 100 },
+  };
+
+  it('returns only pending tasks matching capabilities', () => {
+    const result = findClaimable(tasks, ['implement'], taskTypes, tasks);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, '001');
+  });
+
+  it('sorts by task-type priority descending', () => {
+    const result = findClaimable(tasks, ['implement', 'review'], taskTypes, tasks);
+    assert.equal(result[0].id, '002'); // review=90 > implement=50
+    assert.equal(result[1].id, '001');
+  });
+
+  it('excludes tasks with unresolved blockers', () => {
+    const result = findClaimable(tasks, ['fixes', 'implement'], taskTypes, tasks);
+    // 004 (fixes) is blocked by 001 which is pending, so excluded
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, '001');
+  });
+
+  it('includes tasks whose blockers are all done', () => {
+    const doneTasks = tasks.map((t) => (t.id === '001' ? { ...t, status: 'done' } : t));
+    const result = findClaimable(doneTasks, ['fixes'], taskTypes, doneTasks);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, '004');
+  });
+
+  it('returns empty when no tasks match', () => {
+    const result = findClaimable(tasks, ['planning'], taskTypes, tasks);
+    assert.equal(result.length, 0);
+  });
+});
