@@ -32,8 +32,13 @@ cmd_status() {
   echo ""
 
   # Read tasks from coordination worktree
-  local tasks_dir
-  tasks_dir=$(git worktree list | grep "coordination" | awk '{print $1}')/tasks
+  local coord_wt
+  coord_wt=$(git worktree list | grep "coordination" | awk '{print $1}') || true
+  if [[ -z "$coord_wt" ]]; then
+    echo "Coordination worktree not found. Run 'coordinator start' first."
+    return
+  fi
+  local tasks_dir="$coord_wt/tasks"
 
   if [[ -d "$tasks_dir" ]]; then
     echo "Tasks:"
@@ -77,6 +82,7 @@ cmd_init() {
   git checkout --orphan coordination
   git rm -rf . >/dev/null 2>&1 || true
   mkdir -p tasks
+  touch tasks/.gitkeep
   cat >README.md <<'HEREDOC'
 # Coordination Branch
 
@@ -92,7 +98,7 @@ HEREDOC
   if command -v specify &>/dev/null; then
     echo "  Spec-Kit found. Running 'specify init . --ai claude'..."
     specify init . --ai claude
-  else
+  elif [[ -t 0 ]]; then
     echo ""
     echo "  Spec-Kit not found."
     read -rp "  Install Spec-Kit for planning phase? (y/N) " install_speckit
@@ -104,6 +110,8 @@ HEREDOC
     else
       echo "  Skipping Spec-Kit. You can install later with: npm install -g @github/spec-kit"
     fi
+  else
+    echo "  Spec-Kit not found. Install with: npm install -g @github/spec-kit"
   fi
 
   echo ""
