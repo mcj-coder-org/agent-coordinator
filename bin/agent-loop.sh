@@ -29,7 +29,10 @@ shift 4
 AGENT_CAPS=("$@")
 
 AGENT_BRANCH="agent/$AGENT_NAME"
-CLAUDE_MD_DIR="$AGENT_WORKTREE/.coordination/claude-md"
+
+# Find main repo (parent of coordination worktree) for .coordination/claude-md files
+MAIN_REPO="$(cd "$COORD_WORKTREE/.." && git rev-parse --show-toplevel)"
+CLAUDE_MD_DIR="$MAIN_REPO/.coordination/claude-md"
 CONFIG_JSON="$COORD_WORKTREE/config.json"
 
 IDLE_SLEEP=30
