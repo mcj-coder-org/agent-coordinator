@@ -199,7 +199,7 @@ cmd_start() {
     echo "Launching $name in new terminal tab..."
     local loop_cmd="$SCRIPT_DIR/agent-loop.sh"
     # shellcheck disable=SC2086
-    wt.exe -w 0 new-tab --title "$name" -- bash --login "$loop_cmd" \
+    wt.exe -w 0 new-tab --title "$name" -- bash "$loop_cmd" \
       "$name" "$cmd" "$coord_worktree" "$agent_worktree" ${caps//,/ }
   done
 

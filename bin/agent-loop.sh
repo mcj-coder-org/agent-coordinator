@@ -7,11 +7,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../lib"
 
-# Verify node is available (wt.exe tabs may lack nvm in PATH)
+# Ensure node is available (wt.exe tabs start without .bashrc)
 if ! command -v node &>/dev/null; then
-  echo "ERROR: node not found in PATH. Ensure node is available in login shell." >&2
-  echo "  If using nvm, verify ~/.profile or ~/.bash_profile sources nvm." >&2
-  exit 1
+  # Try common node version managers
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # shellcheck disable=SC1091
+  [[ -s "$NVM_DIR/nvm.sh" ]] && . "$NVM_DIR/nvm.sh"
+
+  if ! command -v node &>/dev/null; then
+    echo "ERROR: node not found in PATH." >&2
+    echo "  Supported: nvm (~/.nvm), system node" >&2
+    exit 1
+  fi
 fi
 
 AGENT_NAME="${1:?Usage: agent-loop.sh <name> <command> <coord-worktree> <agent-worktree> <caps...>}"
