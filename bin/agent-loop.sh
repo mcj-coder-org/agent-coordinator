@@ -35,6 +35,9 @@ MAIN_REPO="$(cd "$COORD_WORKTREE/.." && git rev-parse --show-toplevel)"
 CLAUDE_MD_DIR="$MAIN_REPO/.coordination/claude-md"
 CONFIG_JSON="$COORD_WORKTREE/config.json"
 
+# Detect the base branch (the branch from which coordinator was started)
+BASE_BRANCH="$(cd "$MAIN_REPO" && git branch --show-current)"
+
 IDLE_SLEEP=30
 LOOP_SLEEP=5
 
@@ -85,10 +88,10 @@ while true; do
     continue
   fi
 
-  # 4. Sync agent worktree with latest main
+  # 4. Sync agent worktree with latest base branch
   cd "$AGENT_WORKTREE"
-  git checkout -B "$AGENT_BRANCH" origin/main 2>/dev/null || git checkout -B "$AGENT_BRANCH" main
-  git pull --rebase origin main 2>/dev/null || true
+  git checkout -B "$AGENT_BRANCH" "origin/$BASE_BRANCH" 2>/dev/null || git checkout -B "$AGENT_BRANCH" "$BASE_BRANCH"
+  git pull --rebase origin "$BASE_BRANCH" 2>/dev/null || true
 
   # 5. Build prompt using task-type-specific CLAUDE.md
   TASK_FILE="$COORD_WORKTREE/tasks/$TASK_ID.json"
