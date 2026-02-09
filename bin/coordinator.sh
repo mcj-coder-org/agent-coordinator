@@ -287,7 +287,7 @@ cmd_plan() {
     exit 1
   fi
 
-  local tasks_file="$1"
+  local tasks_file="${1:-}"
   if [[ -z "$tasks_file" ]]; then
     # Auto-discover tasks.md in specs/ directory
     local specs_dirs=(specs/*/tasks.md)
