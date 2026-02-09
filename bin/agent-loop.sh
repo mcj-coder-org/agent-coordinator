@@ -51,6 +51,25 @@ log "  Capabilities: ${AGENT_CAPS[*]}"
 log "  Coord worktree: $COORD_WORKTREE"
 log "  Agent worktree: $AGENT_WORKTREE"
 
+# Reclaim any tasks that were left in claimed state by this agent
+log "Reclaiming orphaned tasks..."
+cd "$COORD_WORKTREE"
+git pull --rebase origin coordination 2>/dev/null || true
+node "$LIB_DIR/tasks.js" reclaim "$COORD_WORKTREE/tasks" "$AGENT_NAME" || true
+if git diff --quiet tasks/; then
+  log "No tasks to reclaim"
+else
+  git add tasks/
+  git commit -m "reclaim: $AGENT_NAME orphaned tasks" --no-verify
+  git push origin coordination 2>/dev/null || true
+fi
+
+# Clean agent worktree for fresh start
+log "Cleaning agent worktree..."
+cd "$AGENT_WORKTREE"
+git reset --hard HEAD
+git clean -fd
+
 while true; do
   # 1. Sync coordination state
   log "Syncing coordination branch..."

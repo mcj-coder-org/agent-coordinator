@@ -1,0 +1,19 @@
+[task-types.fixes]
+priority = 100
+claude-md = "fixes.md"
+
+[task-types.review]
+priority = 90
+claude-md = "reviewer.md"
+
+[task-types.planning]
+priority = 80
+claude-md = "planner.md"
+
+[task-types.implementation]
+priority = 50
+claude-md = "implementer.md"
+
+[task-types.refactoring]
+priority = 30
+claude-md = "refactoring.md"

@@ -179,6 +179,96 @@ describe('updateTask', () => {
   });
 });
 
+const { reclaimTasks } = require('../lib/tasks.js');
+
+describe('reclaimTasks', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('resets claimed tasks by this agent to pending', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        type: 'implement',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        history: [{ status: 'claimed', agent: 'agent-1', timestamp: '2024-01-01T00:00:00Z' }],
+      }),
+    );
+
+    const reclaimed = reclaimTasks(tmpDir, 'agent-1');
+    assert.equal(reclaimed.length, 1);
+    assert.equal(reclaimed[0].id, '001');
+
+    // Verify status reset on disk
+    const onDisk = JSON.parse(fs.readFileSync(taskFile, 'utf8'));
+    assert.equal(onDisk.status, 'pending');
+    assert.equal(onDisk.claimedBy, null);
+    assert.equal(onDisk.history.length, 2);
+    assert.equal(onDisk.history[1].status, 'pending');
+    assert.equal(onDisk.history[1].agent, 'agent-1');
+    assert.match(onDisk.history[1].note, /reclaimed on startup/);
+  });
+
+  it('ignores tasks claimed by other agents', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '001.json'),
+      JSON.stringify({ id: '001', status: 'claimed', claimedBy: 'agent-2', history: [] }),
+    );
+
+    const reclaimed = reclaimTasks(tmpDir, 'agent-1');
+    assert.equal(reclaimed.length, 0);
+
+    // Verify unchanged
+    const onDisk = JSON.parse(fs.readFileSync(path.join(tmpDir, '001.json'), 'utf8'));
+    assert.equal(onDisk.status, 'claimed');
+    assert.equal(onDisk.claimedBy, 'agent-2');
+  });
+
+  it('ignores tasks with other statuses', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '001.json'),
+      JSON.stringify({ id: '001', status: 'pending', claimedBy: null, history: [] }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '002.json'),
+      JSON.stringify({ id: '002', status: 'complete', claimedBy: 'agent-1', history: [] }),
+    );
+
+    const reclaimed = reclaimTasks(tmpDir, 'agent-1');
+    assert.equal(reclaimed.length, 0);
+  });
+
+  it('handles multiple tasks claimed by this agent', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '001.json'),
+      JSON.stringify({ id: '001', status: 'claimed', claimedBy: 'agent-1', history: [] }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '002.json'),
+      JSON.stringify({ id: '002', status: 'claimed', claimedBy: 'agent-1', history: [] }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '003.json'),
+      JSON.stringify({ id: '003', status: 'claimed', claimedBy: 'agent-2', history: [] }),
+    );
+
+    const reclaimed = reclaimTasks(tmpDir, 'agent-1');
+    assert.equal(reclaimed.length, 2);
+    assert.equal(reclaimed[0].id, '001');
+    assert.equal(reclaimed[1].id, '002');
+  });
+});
+
 const { execFileSync } = require('node:child_process');
 
 describe('CLI interface', () => {
@@ -274,5 +364,47 @@ describe('CLI interface', () => {
 
     const onDisk = JSON.parse(fs.readFileSync(taskFile, 'utf8'));
     assert.equal(onDisk.status, 'complete');
+  });
+
+  it('reclaim resets claimed tasks by agent to pending', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'tasks', '001.json'),
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        history: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'tasks', '002.json'),
+      JSON.stringify({
+        id: '002',
+        status: 'claimed',
+        claimedBy: 'agent-2',
+        history: [],
+      }),
+    );
+
+    const result = execFileSync(
+      'node',
+      [
+        path.join(__dirname, '..', 'lib', 'tasks.js'),
+        'reclaim',
+        path.join(tmpDir, 'tasks'),
+        'agent-1',
+      ],
+      { encoding: 'utf8' },
+    );
+
+    assert.match(result, /Reclaimed 1 task\(s\): 001/);
+
+    const task1 = JSON.parse(fs.readFileSync(path.join(tmpDir, 'tasks', '001.json'), 'utf8'));
+    const task2 = JSON.parse(fs.readFileSync(path.join(tmpDir, 'tasks', '002.json'), 'utf8'));
+
+    assert.equal(task1.status, 'pending');
+    assert.equal(task1.claimedBy, null);
+    assert.equal(task2.status, 'claimed'); // unchanged
+    assert.equal(task2.claimedBy, 'agent-2');
   });
 });
