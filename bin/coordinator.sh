@@ -115,13 +115,128 @@ HEREDOC
 }
 
 cmd_start() {
-  echo "coordinator start — not yet implemented"
-  exit 1
+  local coord_dir=".coordination"
+  if [[ ! -d "$coord_dir" ]]; then
+    echo "Error: .coordination/ not found. Run 'coordinator init' first." >&2
+    exit 1
+  fi
+
+  local agents_config="${XDG_CONFIG_HOME:-$HOME/.config}/coordinator/agents.toml"
+  if [[ ! -f "$agents_config" ]]; then
+    echo "Error: Agent config not found at $agents_config" >&2
+    echo "Create it with your available agents. Example:" >&2
+    echo '  [agents.claude-max]' >&2
+    echo '  command = "claude"' >&2
+    echo '  capabilities = ["implementation", "review"]' >&2
+    exit 1
+  fi
+
+  local project_root
+  project_root=$(git rev-parse --show-toplevel)
+  local project_name
+  project_name=$(basename "$project_root")
+
+  # Create coordination worktree
+  local coord_worktree="$project_root/../${project_name}-coordination"
+  if [[ ! -d "$coord_worktree" ]]; then
+    echo "Creating coordination worktree..."
+    git worktree add "$coord_worktree" coordination
+  fi
+
+  # Convert TOML config to JSON for tasks.js
+  local config_json="$coord_worktree/config.json"
+  node -e "
+    const { parseTOML } = require('$LIB_DIR/toml.js');
+    const fs = require('fs');
+    const toml = fs.readFileSync('$coord_dir/config.toml', 'utf8');
+    fs.writeFileSync('$config_json', JSON.stringify(parseTOML(toml), null, 2));
+  "
+
+  # Parse agents from TOML config
+  local agent_names=()
+  local agent_commands=()
+  local agent_capabilities=()
+  local current_agent=""
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^\[agents\.([a-zA-Z0-9_-]+)\]$ ]]; then
+      current_agent="${BASH_REMATCH[1]}"
+      agent_names+=("$current_agent")
+    elif [[ -n "$current_agent" && "$line" =~ ^command\ *=\ *\"(.+)\"$ ]]; then
+      agent_commands+=("${BASH_REMATCH[1]}")
+    elif [[ -n "$current_agent" && "$line" =~ ^capabilities\ *=\ *\[(.+)\]$ ]]; then
+      local caps="${BASH_REMATCH[1]}"
+      caps=$(echo "$caps" | sed 's/"//g; s/ //g')
+      agent_capabilities+=("$caps")
+    fi
+  done <"$agents_config"
+
+  echo "Found ${#agent_names[@]} agent(s) in config"
+
+  # Create worktree + WT tab per agent
+  for i in "${!agent_names[@]}"; do
+    local name="${agent_names[$i]}"
+    local cmd="${agent_commands[$i]}"
+    local caps="${agent_capabilities[$i]}"
+    local agent_worktree="$project_root/../${project_name}-${name}"
+
+    # Create agent branch and worktree
+    if [[ ! -d "$agent_worktree" ]]; then
+      echo "Creating worktree for $name..."
+      git branch "agent/$name" HEAD 2>/dev/null || true
+      git worktree add "$agent_worktree" "agent/$name"
+    fi
+
+    # Launch in Windows Terminal tab
+    echo "Launching $name in new terminal tab..."
+    local loop_cmd="$SCRIPT_DIR/agent-loop.sh"
+    # shellcheck disable=SC2086
+    wt.exe -w 0 new-tab --title "$name" -- bash "$loop_cmd" \
+      "$name" "$cmd" "$coord_worktree" "$agent_worktree" ${caps//,/ }
+  done
+
+  echo ""
+  echo "All agents started. Use 'coordinator status' to monitor."
 }
 
 cmd_stop() {
-  echo "coordinator stop — not yet implemented"
-  exit 1
+  local clean=false
+  if [[ "${1:-}" == "--clean" ]]; then
+    clean=true
+  fi
+
+  local project_root
+  project_root=$(git rev-parse --show-toplevel)
+  local project_name
+  project_name=$(basename "$project_root")
+
+  echo "Stopping agents..."
+
+  # Find and remove agent/coordination worktrees
+  while IFS= read -r line; do
+    local wt_path
+    wt_path=$(echo "$line" | awk '{print $1}')
+    local wt_name
+    wt_name=$(basename "$wt_path")
+    # Match worktrees created by coordinator (project-name-agentname or project-name-coordination)
+    if [[ "$wt_name" == "${project_name}-"* && "$wt_path" != "$project_root" ]]; then
+      echo "  Removing worktree: $wt_path"
+      git worktree remove "$wt_path" --force 2>/dev/null || true
+    fi
+  done < <(git worktree list)
+
+  if $clean; then
+    echo "Cleaning up agent branches..."
+    while IFS= read -r branch; do
+      branch=$(echo "$branch" | tr -d ' *')
+      if [[ "$branch" == agent/* ]]; then
+        echo "  Deleting branch: $branch"
+        git branch -D "$branch" 2>/dev/null || true
+      fi
+    done < <(git branch)
+  fi
+
+  echo "Done."
 }
 
 cmd_add_agent() {
