@@ -358,24 +358,27 @@ cmd_reset_failed() {
     exit 1
   fi
 
-  # Find coordination worktree
-  local coord_wt
-  coord_wt=$(git worktree list | grep "coordination" | awk '{print $1}') || true
-  if [[ -z "$coord_wt" ]]; then
-    echo "Error: Coordination worktree not found. Run 'coordinator start' first." >&2
+  # Get current branch to return to
+  local current_branch
+  current_branch=$(git branch --show-current)
+
+  # Switch to coordination branch
+  if ! git checkout coordination >/dev/null 2>&1; then
+    echo "Error: Could not checkout coordination branch" >&2
     exit 1
   fi
 
-  local tasks_dir="$coord_wt/tasks"
+  # Pull latest changes
+  git pull --rebase origin coordination 2>/dev/null || true
+
+  local tasks_dir="tasks"
   if [[ ! -d "$tasks_dir" ]]; then
-    echo "Error: Tasks directory not found at $tasks_dir" >&2
+    echo "Error: Tasks directory not found" >&2
+    git checkout "$current_branch" >/dev/null 2>&1
     exit 1
   fi
 
   # Check if any agents are running (any claimed tasks exist)
-  cd "$coord_wt"
-  git pull --rebase origin coordination 2>/dev/null || true
-
   local claimed_count=0
   for task_file in "$tasks_dir"/*.json; do
     [[ -f "$task_file" ]] || continue
@@ -389,6 +392,7 @@ cmd_reset_failed() {
   if [[ $claimed_count -gt 0 ]]; then
     echo "Error: Agents are currently running ($claimed_count claimed tasks)." >&2
     echo "  Run 'coordinator stop' first to avoid task confusion." >&2
+    git checkout "$current_branch" >/dev/null 2>&1
     exit 1
   fi
 
@@ -406,9 +410,13 @@ cmd_reset_failed() {
     git commit -m "reset: all failed tasks to pending" --no-verify
     git push origin coordination 2>/dev/null || true
     echo "Done. Failed tasks have been reset to pending."
-    echo ""
-    echo "Run 'coordinator start' to begin processing tasks."
   fi
+
+  # Return to original branch
+  git checkout "$current_branch" >/dev/null 2>&1
+
+  echo ""
+  echo "Run 'coordinator start' to begin processing tasks."
 }
 
 main() {
