@@ -14,16 +14,17 @@ usage() {
 Usage: coordinator <command> [options]
 
 Commands:
-  init [--force]  Initialize .coordination/ in current project
-                  --force: reinitialize (deletes existing setup)
-  start           Create worktrees and start agent loops
-  stop            Stop agent loops and optionally clean worktrees
-  add-agent       Spin up an additional agent
-  status          Show current task and agent status
-  plan            Run planner agent with Spec-Kit
+  init [--force]    Initialize .coordination/ in current project
+                    --force: reinitialize (deletes existing setup)
+  plan [tasks.md]   Convert Spec-Kit tasks.md to JSON task files
+                    Auto-discovers specs/*/tasks.md if no path given
+  start             Create worktrees and start agent loops
+  stop              Stop agent loops and optionally clean worktrees
+  add-agent         Spin up an additional agent
+  status            Show current task and agent status
 
 Options:
-  -h, --help      Show this help message
+  -h, --help        Show this help message
 EOF
 }
 
