@@ -86,4 +86,25 @@ describe('parseTasksMarkdown', () => {
     const result = parseTasksMarkdown(markdown);
     assert.deepEqual(result[0].files, ['lib/util-func.js', 'src/auth_service.py']);
   });
+
+  it('extracts root-level files', () => {
+    const markdown = '- [ ] T001 Update README.md and package.json';
+    const result = parseTasksMarkdown(markdown);
+    assert.deepEqual(result[0].files, ['README.md', 'package.json']);
+  });
+
+  it('returns empty array for undefined input', () => {
+    const result = parseTasksMarkdown(undefined);
+    assert.deepEqual(result, []);
+  });
+
+  it('handles duplicate task IDs without throwing', () => {
+    const markdown = `- [ ] T001 First task
+- [ ] T001 Duplicate task ID`;
+    const result = parseTasksMarkdown(markdown);
+    assert.equal(result.length, 2);
+    assert.equal(result[0].taskId, 'T001');
+    assert.equal(result[1].taskId, 'T001');
+    // Parser doesn't validate uniqueness - caller's responsibility
+  });
 });
