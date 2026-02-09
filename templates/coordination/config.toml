@@ -1,3 +1,6 @@
+[settings]
+max-retries = 3
+
 [task-types.fixes]
 priority = 100
 claude-md = "fixes.md"

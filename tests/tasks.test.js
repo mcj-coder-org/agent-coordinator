@@ -269,6 +269,149 @@ describe('reclaimTasks', () => {
   });
 });
 
+describe('updateTask with retry tracking', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('tracks retry count and auto-resets on first failure', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        retries: 0,
+        history: [],
+      }),
+    );
+
+    const result = updateTask(taskFile, 'failed', 'agent-1');
+    assert.equal(result.status, 'pending'); // Auto-reset on first failure
+    assert.equal(result.retries, 1);
+    assert.equal(result.claimedBy, null);
+  });
+
+  it('auto-resets failed task to pending when retries < MAX_RETRIES', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    const MAX_RETRIES = 3;
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        retries: 1,
+        history: [],
+      }),
+    );
+
+    const result = updateTask(taskFile, 'failed', 'agent-1', MAX_RETRIES);
+    assert.equal(result.status, 'pending'); // Auto-reset
+    assert.equal(result.retries, 2);
+    assert.equal(result.claimedBy, null);
+  });
+
+  it('keeps status failed when retries >= MAX_RETRIES', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    const MAX_RETRIES = 3;
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        retries: 2,
+        history: [],
+      }),
+    );
+
+    const result = updateTask(taskFile, 'failed', 'agent-1', MAX_RETRIES);
+    assert.equal(result.status, 'failed'); // Stay failed
+    assert.equal(result.retries, 3);
+  });
+
+  it('does not increment retries for non-failed status', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        retries: 0,
+        history: [],
+      }),
+    );
+
+    const result = updateTask(taskFile, 'complete', 'agent-1');
+    assert.equal(result.status, 'complete');
+    assert.equal(result.retries, 0); // Unchanged
+  });
+});
+
+const { resetFailedTasks } = require('../lib/tasks.js');
+
+describe('resetFailedTasks', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('resets all failed tasks to pending', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '001.json'),
+      JSON.stringify({ id: '001', status: 'failed', retries: 3, claimedBy: null, history: [] }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '002.json'),
+      JSON.stringify({ id: '002', status: 'failed', retries: 2, claimedBy: null, history: [] }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '003.json'),
+      JSON.stringify({ id: '003', status: 'complete', retries: 0, claimedBy: null, history: [] }),
+    );
+
+    const reset = resetFailedTasks(tmpDir);
+    assert.equal(reset.length, 2);
+    assert.equal(reset[0].id, '001');
+    assert.equal(reset[1].id, '002');
+
+    // Verify on disk
+    const task1 = JSON.parse(fs.readFileSync(path.join(tmpDir, '001.json'), 'utf8'));
+    const task2 = JSON.parse(fs.readFileSync(path.join(tmpDir, '002.json'), 'utf8'));
+    const task3 = JSON.parse(fs.readFileSync(path.join(tmpDir, '003.json'), 'utf8'));
+
+    assert.equal(task1.status, 'pending');
+    assert.equal(task1.retries, 0);
+    assert.equal(task2.status, 'pending');
+    assert.equal(task2.retries, 0);
+    assert.equal(task3.status, 'complete'); // Unchanged
+  });
+
+  it('returns empty array when no failed tasks', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '001.json'),
+      JSON.stringify({ id: '001', status: 'pending', retries: 0, claimedBy: null, history: [] }),
+    );
+
+    const reset = resetFailedTasks(tmpDir);
+    assert.equal(reset.length, 0);
+  });
+});
+
 const { execFileSync } = require('node:child_process');
 
 describe('CLI interface', () => {
@@ -406,5 +549,43 @@ describe('CLI interface', () => {
     assert.equal(task1.claimedBy, null);
     assert.equal(task2.status, 'claimed'); // unchanged
     assert.equal(task2.claimedBy, 'agent-2');
+  });
+
+  it('reset-failed resets all failed tasks to pending', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'tasks', '001.json'),
+      JSON.stringify({
+        id: '001',
+        status: 'failed',
+        retries: 3,
+        claimedBy: null,
+        history: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'tasks', '002.json'),
+      JSON.stringify({
+        id: '002',
+        status: 'complete',
+        retries: 0,
+        claimedBy: null,
+        history: [],
+      }),
+    );
+
+    const result = execFileSync(
+      'node',
+      [path.join(__dirname, '..', 'lib', 'tasks.js'), 'reset-failed', path.join(tmpDir, 'tasks')],
+      { encoding: 'utf8' },
+    );
+
+    assert.match(result, /Reset 1 failed task\(s\): 001/);
+
+    const task1 = JSON.parse(fs.readFileSync(path.join(tmpDir, 'tasks', '001.json'), 'utf8'));
+    const task2 = JSON.parse(fs.readFileSync(path.join(tmpDir, 'tasks', '002.json'), 'utf8'));
+
+    assert.equal(task1.status, 'pending');
+    assert.equal(task1.retries, 0);
+    assert.equal(task2.status, 'complete'); // unchanged
   });
 });

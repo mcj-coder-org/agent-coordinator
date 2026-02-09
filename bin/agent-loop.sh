@@ -93,6 +93,9 @@ cd "$AGENT_WORKTREE"
 git reset --hard HEAD
 git clean -fd
 
+# Read MAX_RETRIES from config (default to 3)
+MAX_RETRIES=$(node -e "const c=require('$CONFIG_JSON'); console.log(c.settings?.['max-retries'] || 3)")
+
 while true; do
   # 1. Sync coordination state
   log "Syncing coordination branch..."
@@ -148,7 +151,7 @@ while true; do
   else
     log "Agent failed on task $TASK_ID"
     cd "$COORD_WORKTREE"
-    node "$LIB_DIR/tasks.js" update "$TASK_FILE" "failed" "$AGENT_NAME"
+    node "$LIB_DIR/tasks.js" update "$TASK_FILE" "failed" "$AGENT_NAME" "$MAX_RETRIES"
     git add tasks/ && git commit -m "failed: $TASK_ID" --no-verify
     git push origin coordination 2>/dev/null || true
     sleep "$LOOP_SLEEP"
