@@ -94,3 +94,80 @@ describe('findClaimable', () => {
     assert.equal(result.length, 0);
   });
 });
+
+const { claimTask, updateTask } = require('../lib/tasks.js');
+
+describe('claimTask', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('sets status to claimed and records agent', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        type: 'implement',
+        status: 'pending',
+        claimedBy: null,
+        history: [],
+      }),
+    );
+
+    const result = claimTask(taskFile, 'agent-1');
+    assert.equal(result.status, 'claimed');
+    assert.equal(result.claimedBy, 'agent-1');
+    assert.equal(result.history.length, 1);
+    assert.equal(result.history[0].status, 'claimed');
+    assert.equal(result.history[0].agent, 'agent-1');
+
+    // Verify written to disk
+    const onDisk = JSON.parse(fs.readFileSync(taskFile, 'utf8'));
+    assert.equal(onDisk.status, 'claimed');
+    assert.equal(onDisk.claimedBy, 'agent-1');
+  });
+
+  it('throws if task is not pending', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    fs.writeFileSync(taskFile, JSON.stringify({ id: '001', status: 'claimed', history: [] }));
+
+    assert.throws(() => claimTask(taskFile, 'agent-1'), /not pending/);
+  });
+});
+
+describe('updateTask', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coordinator-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it('updates status and appends to history', () => {
+    const taskFile = path.join(tmpDir, '001.json');
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({
+        id: '001',
+        status: 'claimed',
+        claimedBy: 'agent-1',
+        history: [{ status: 'claimed', agent: 'agent-1', timestamp: '...' }],
+      }),
+    );
+
+    const result = updateTask(taskFile, 'complete', 'agent-1');
+    assert.equal(result.status, 'complete');
+    assert.equal(result.history.length, 2);
+    assert.equal(result.history[1].status, 'complete');
+  });
+});
