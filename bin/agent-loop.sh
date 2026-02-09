@@ -11,17 +11,21 @@ LIB_DIR="$SCRIPT_DIR/../lib"
 shopt -s expand_aliases
 
 # Source user profile to get aliases and PATH (wt.exe tabs start without profile)
-# Try both bash and zsh profile files
+# Temporarily disable unbound variable errors since profile files may reference
+# shell-specific variables (e.g., ZSH_VERSION in .zshrc when running in bash)
+set +u
 # shellcheck disable=SC1090,SC1091
-[[ -f "$HOME/.bash_profile" ]] && . "$HOME/.bash_profile"
+[[ -f "$HOME/.bash_profile" ]] && . "$HOME/.bash_profile" 2>/dev/null || true
 # shellcheck disable=SC1090,SC1091
-[[ -f "$HOME/.bashrc" ]] && . "$HOME/.bashrc"
+[[ -f "$HOME/.bashrc" ]] && . "$HOME/.bashrc" 2>/dev/null || true
 # shellcheck disable=SC1090,SC1091
-[[ -f "$HOME/.zprofile" ]] && . "$HOME/.zprofile"
+[[ -f "$HOME/.zprofile" ]] && . "$HOME/.zprofile" 2>/dev/null || true
 # shellcheck disable=SC1090,SC1091
-[[ -f "$HOME/.zshrc" ]] && . "$HOME/.zshrc"
+[[ -f "$HOME/.zshrc" ]] && . "$HOME/.zshrc" 2>/dev/null || true
 # shellcheck disable=SC1090,SC1091
-[[ -f "$HOME/.profile" ]] && . "$HOME/.profile"
+[[ -f "$HOME/.profile" ]] && . "$HOME/.profile" 2>/dev/null || true
+# Re-enable unbound variable errors
+set -u
 
 # Ensure node is available
 if ! command -v node &>/dev/null; then
