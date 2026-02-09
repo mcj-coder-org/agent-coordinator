@@ -10,11 +10,16 @@ LIB_DIR="$SCRIPT_DIR/../lib"
 # Enable alias expansion for non-interactive shell
 shopt -s expand_aliases
 
-# Source user profile to get aliases and PATH (wt.exe tabs start without .bashrc)
+# Source user profile to get aliases and PATH (wt.exe tabs start without profile)
+# Try both bash and zsh profile files
 # shellcheck disable=SC1090,SC1091
 [[ -f "$HOME/.bash_profile" ]] && . "$HOME/.bash_profile"
 # shellcheck disable=SC1090,SC1091
 [[ -f "$HOME/.bashrc" ]] && . "$HOME/.bashrc"
+# shellcheck disable=SC1090,SC1091
+[[ -f "$HOME/.zprofile" ]] && . "$HOME/.zprofile"
+# shellcheck disable=SC1090,SC1091
+[[ -f "$HOME/.zshrc" ]] && . "$HOME/.zshrc"
 # shellcheck disable=SC1090,SC1091
 [[ -f "$HOME/.profile" ]] && . "$HOME/.profile"
 
