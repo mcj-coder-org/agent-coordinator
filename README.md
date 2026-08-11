@@ -39,6 +39,104 @@ v0.1 — Local development only.
 - Git with worktree support
 - Windows Terminal (`wt.exe`) for agent tabs
 
+### Optional: Spec-Kit (for planning phase)
+
+If you want to use `coordinator plan` for task generation:
+
+```bash
+# Install uv (Python package manager) if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install Spec-Kit
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+```
+
+Requires Python 3.11+.
+See [github/spec-kit](https://github.com/github/spec-kit) for details.
+
+## Usage
+
+### 1. Initialize Coordinator
+
+```bash
+coordinator init
+```
+
+Creates `.coordination/` directory and `coordination` branch for task tracking.
+
+### 2. Generate Tasks (with Spec-Kit)
+
+If you have Spec-Kit installed and have created a `tasks.md`:
+
+```bash
+# Auto-discover tasks.md in specs/ directory
+coordinator plan
+
+# Or specify path explicitly
+coordinator plan specs/001-my-feature/tasks.md
+```
+
+This converts Spec-Kit's markdown tasks to JSON files on the coordination branch.
+
+### 3. Manually Create Tasks (without Spec-Kit)
+
+Create JSON files directly on the coordination branch:
+
+```bash
+git checkout coordination
+cat > tasks/001.json <<JSON
+{
+  "id": "001",
+  "type": "implementation",
+  "status": "pending",
+  "description": "Implement user authentication",
+  "acceptanceCriteria": ["User can log in", "Session persists"],
+  "owns": ["src/auth/login.js"],
+  "touches": [],
+  "blockedBy": [],
+  "claimedBy": null,
+  "history": []
+}
+JSON
+git add tasks/001.json
+git commit -m "Add task 001"
+git checkout main
+```
+
+See `.coordination/claude-md/planner.md` for the full task JSON schema.
+
+### 4. Start Agents
+
+```bash
+coordinator start
+```
+
+Creates worktrees and launches agents in Windows Terminal tabs.
+
+### 5. Monitor Progress
+
+```bash
+coordinator status
+```
+
+Shows which tasks are pending, claimed, or complete.
+
+### 6. Handle Failed Tasks
+
+Failed tasks are automatically retried up to `max-retries` times (default: 3).
+Configure in `.coordination/config.toml`:
+
+```toml
+[settings]
+max-retries = 3
+```
+
+To manually reset all failed tasks to pending:
+
+```bash
+coordinator reset-failed
+```
+
 ## Development
 
 ```bash
